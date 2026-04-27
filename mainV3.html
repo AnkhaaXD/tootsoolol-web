@@ -1,0 +1,651 @@
+<!DOCTYPE html>
+<html lang="mn">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+<title>Гэр Бүлийн Хүчирхийлэл — IPV Симулятор</title>
+<link href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;700&display=swap" rel="stylesheet"/>
+<script src="https://cdn.jsdelivr.net/pyodide/v0.25.1/full/pyodide.js"></script>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  background: #ffffff;
+  color: #111111;
+  font-family: 'Roboto', sans-serif;
+  font-size: 13px;
+  min-height: 100vh;
+}
+
+/* LOADER */
+#loader {
+  position: fixed; inset: 0; background: #fff; z-index: 999;
+  display: flex; flex-direction: column; align-items: center;
+  justify-content: center; gap: 12px;
+  transition: opacity 0.6s;
+}
+#loader.gone { opacity: 0; pointer-events: none; }
+.l-ring {
+  width: 28px; height: 28px;
+  border: 2px solid #ddd; border-top-color: #111;
+  border-radius: 50%; animation: spin 0.8s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+#loader p { color: #666; font-size: 12px; }
+
+/* HEADER */
+header {
+  padding: 28px 32px 24px;
+  border-bottom: 1px solid #e0e0e0;
+}
+header .label {
+  font-size: 10px; color: #888; text-transform: uppercase;
+  letter-spacing: 0.15em; margin-bottom: 8px;
+}
+header h1 {
+  font-size: 20px; font-weight: 700; color: #111;
+  line-height: 1.3;
+}
+
+/* TABS */
+.factor-bar {
+  display: grid; grid-template-columns: repeat(5, 1fr);
+  border-bottom: 1px solid #e0e0e0;
+}
+.fb {
+  padding: 14px 16px; cursor: pointer;
+  background: transparent; border: none;
+  border-right: 1px solid #e0e0e0;
+  text-align: left;
+}
+.fb:last-child { border-right: none; }
+.fb:hover { background: #f9f9f9; }
+.fb.active { background: #f4f4f4; border-bottom: 2px solid #111; }
+.fb-title { font-size: 11px; font-weight: 500; color: #333; margin-bottom: 2px; }
+.fb.active .fb-title { color: #111; font-weight: 700; }
+.fb-sub { font-size: 10px; color: #999; }
+
+/* LAYOUT */
+.layout {
+  display: grid;
+  grid-template-columns: 230px 1fr;
+  min-height: calc(100vh - 200px);
+}
+
+/* SIDEBAR */
+.sidebar {
+  border-right: 1px solid #e0e0e0;
+  padding: 20px 18px;
+  display: flex; flex-direction: column; gap: 18px;
+  position: sticky; top: 0;
+  height: calc(100vh - 200px);
+  overflow-y: auto;
+}
+.sidebar-label {
+  font-size: 10px; font-weight: 500; color: #999;
+  text-transform: uppercase; letter-spacing: 0.12em;
+}
+
+/* SLIDERS */
+.sl-block { display: flex; flex-direction: column; gap: 5px; }
+.sl-top { display: flex; justify-content: space-between; align-items: center; }
+.sl-name { font-size: 11px; color: #444; }
+.sl-val { font-size: 14px; font-weight: 700; color: #111; }
+.sl-hint { font-size: 9px; color: #bbb; }
+.track {
+  position: relative; height: 2px; background: #e0e0e0;
+  margin-top: 4px;
+}
+.fill { position: absolute; left: 0; top: 0; height: 100%; background: #111; }
+input[type=range] {
+  position: absolute; inset: 0; width: 100%;
+  opacity: 0; cursor: pointer; height: 18px; top: -8px; margin: 0;
+}
+.thumb {
+  position: absolute; top: 50%; transform: translate(-50%, -50%);
+  width: 10px; height: 10px; border-radius: 50%;
+  background: #111; pointer-events: none;
+}
+
+/* TOGGLE */
+.toggle-wrap { display: flex; gap: 0; }
+.tog-btn {
+  flex: 1; padding: 6px 0; border: 1px solid #ddd;
+  background: #fff; color: #888; font-size: 10px;
+  font-family: 'Roboto', sans-serif; cursor: pointer;
+}
+.tog-btn:first-child { border-radius: 3px 0 0 3px; }
+.tog-btn:last-child { border-radius: 0 3px 3px 0; border-left: none; }
+.tog-btn.active { background: #111; border-color: #111; color: #fff; }
+
+/* MAIN */
+main { padding: 20px 24px; display: flex; flex-direction: column; gap: 16px; }
+
+/* KPI */
+.kpi-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+.kpi {
+  border: 1px solid #e0e0e0; border-radius: 4px;
+  padding: 14px 16px;
+}
+.kpi .lbl { font-size: 10px; color: #888; margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.06em; }
+.kpi .val { font-size: 24px; font-weight: 700; color: #111; }
+
+/* CHARTS */
+.chart-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.cpanel {
+  border: 1px solid #e0e0e0; border-radius: 4px; padding: 16px;
+}
+.cp-title { font-size: 11px; font-weight: 700; color: #111; margin-bottom: 4px; }
+.cp-q {
+  font-size: 10px; color: #888; margin-bottom: 12px;
+  padding-left: 8px; border-left: 2px solid #e0e0e0;
+  line-height: 1.5;
+}
+.chart-img { width: 100%; border-radius: 3px; display: block; }
+.spin {
+  display: flex; align-items: center; justify-content: center;
+  height: 180px; gap: 8px; color: #bbb; font-size: 11px;
+}
+.mini {
+  width: 14px; height: 14px;
+  border: 2px solid #eee; border-top-color: #888;
+  border-radius: 50%; animation: spin 0.8s linear infinite;
+}
+
+/* TABLE */
+.data-section {
+  border: 1px solid #e0e0e0; border-radius: 4px; padding: 16px;
+}
+.data-section h3 { font-size: 12px; font-weight: 700; color: #111; margin-bottom: 10px; }
+table { width: 100%; border-collapse: collapse; font-size: 11px; }
+th {
+  text-align: left; padding: 6px 10px;
+  font-size: 9px; font-weight: 500; color: #888;
+  text-transform: uppercase; letter-spacing: 0.07em;
+  border-bottom: 1px solid #e0e0e0;
+  background: #fafafa;
+}
+td {
+  padding: 7px 10px;
+  border-bottom: 1px solid #f0f0f0;
+  color: #333;
+}
+tr:last-child td { border-bottom: none; }
+</style>
+</head>
+<body>
+
+<div id="loader">
+  <div class="l-ring"></div>
+  <p id="lnote">Python ачааллаж байна...</p>
+</div>
+
+<header>
+  <div class="label">Монголын Гэр Бүлийн Судалгаа · IPV Симулятор</div>
+  <h1>Ямар хүчин зүйл гэр бүлийн хүчирхийллийг нэмэгдүүлдэг вэ?</h1>
+</header>
+
+<div class="factor-bar">
+  <button class="fb active" data-fc="alcohol">
+    <div class="fb-title">Архи</div>
+    <div class="fb-sub">Архины хэрэглээ</div>
+  </button>
+  <button class="fb" data-fc="jealousy">
+    <div class="fb-title">Эхнэрт хардалт</div>
+    <div class="fb-sub">Хардалт, итгэлгүйдэл</div>
+  </button>
+  <button class="fb" data-fc="education">
+    <div class="fb-title">Боловсрол</div>
+    <div class="fb-sub">Эхийн боловсролын түвшин</div>
+  </button>
+  <button class="fb" data-fc="talk">
+    <div class="fb-title">Хамтрагчтай ярих</div>
+    <div class="fb-sub">Харилцааны давтамж</div>
+  </button>
+  <button class="fb" data-fc="unwantedsex">
+    <div class="fb-title">Тохиролцоогүй харьцаа</div>
+    <div class="fb-sub">Хүчийн бэлгийн харьцаа</div>
+  </button>
+</div>
+
+<div class="layout">
+  <div class="sidebar">
+    <div class="sidebar-label">Нөхцөл тохируулах</div>
+    <div id="sliders-area" style="display:flex;flex-direction:column;gap:18px;"></div>
+  </div>
+
+  <main>
+    <div class="kpi-row">
+      <div class="kpi"><div class="lbl">IPV эрсдэл</div><div class="val" id="kv0">—</div></div>
+      <div class="kpi"><div class="lbl" id="kl1">Хоёрдогч үзүүлэлт</div><div class="val" id="kv1">—</div></div>
+      <div class="kpi"><div class="lbl" id="kl2">Гурав дахь үзүүлэлт</div><div class="val" id="kv2">—</div></div>
+    </div>
+
+    <div class="chart-grid">
+      <div class="cpanel">
+        <div class="cp-title" id="ct1">—</div>
+        <div class="cp-q" id="cq1">—</div>
+        <div class="spin" id="sp1"><div class="mini"></div><span>тооцоолж байна...</span></div>
+        <img class="chart-img" id="img1" style="display:none"/>
+      </div>
+      <div class="cpanel">
+        <div class="cp-title" id="ct2">—</div>
+        <div class="cp-q" id="cq2">—</div>
+        <div class="spin" id="sp2"><div class="mini"></div><span>тооцоолж байна...</span></div>
+        <img class="chart-img" id="img2" style="display:none"/>
+      </div>
+    </div>
+
+    <div class="data-section">
+      <h3 id="dtitle">Судалгааны өгөгдөл</h3>
+      <div id="dtable"></div>
+    </div>
+  </main>
+</div>
+
+<script>
+const FACTORS = {
+  alcohol:{
+    sliders:[
+      {id:"drinks",label:"7 хоногт архи уух өдөр",min:0,max:7,step:1,val:2,hint:"0 = хэзээ ч үгүй  ·  7 = өдөр бүр"},
+      {id:"urban",label:"Орчин",min:0,max:1,step:1,val:0,isToggle:true,opts:["Хөдөө","Хот"]},
+    ],
+    charts:[
+      ["Архины давтамж — IPV эрсдэл (%)","Долоо хоногт илүү олон удаа архи уух тусам IPV эрсдэл хэрхэн нэмэгдэх вэ?"],
+      ["Хот / Хөдөө харьцуулалт","Нийслэл болон хөдөөд архины IPV нөлөөлөл ижил хүчтэй байдаг уу?"],
+    ],
+    tableHeaders:["Архи уух давтамж","Жишээ","IPV эрсдэл %","Хэрүүл/сар","Аюулгүй байдал"],
+    tableData:[
+      ["Хэзээ ч үгүй","0 удаа/7 хоног","8%","0.5","Өндөр"],
+      ["Баяр ёслолд","1 удаа/7 хоног","18%","1.2","Дунд"],
+      ["Долоо хоногт 2","2 удаа/7 хоног","28%","2.4","Дунд"],
+      ["Долоо хоногт 3","3 удаа/7 хоног","39%","3.8","Бага"],
+      ["Долоо хоногт 4–5","5 удаа/7 хоног","54%","5.6","Маш бага"],
+      ["Бараг өдөр бүр","6 удаа/7 хоног","67%","7.2","Маш бага"],
+      ["Өдөр бүр","7 удаа/7 хоног","79%","9.1","Аюултай"],
+    ],
+  },
+  jealousy:{
+    sliders:[
+      {id:"jlevel",label:"Хардалтын түвшин",min:0,max:4,step:1,val:1,hint:"0 = огт байхгүй  ·  4 = маш хүчтэй"},
+      {id:"urban",label:"Орчин",min:0,max:1,step:1,val:0,isToggle:true,opts:["Хөдөө","Хот"]},
+    ],
+    charts:[
+      ["Хардалтын түвшин — IPV эрсдэл (%)","Хардалт нэмэгдэх тусам биет хүчирхийллийн эрсдэл хэрхэн өсөх вэ?"],
+      ["Хот / Хөдөө харьцуулалт","Нийслэл болон хөдөөд хардалтын нөлөөлөл ялгаатай байдаг уу?"],
+    ],
+    tableHeaders:["Хардалтын түвшин","Тодорхойлолт","IPV эрсдэл %","Хяналтын оноо","Сэтгэцийн хүч-л"],
+    tableData:[
+      ["0 — Байхгүй","Итгэлтэй харилцаа","9%","0.2","5%"],
+      ["1 — Бага","Хааяа сэжиглэдэг","24%","1.8","18%"],
+      ["2 — Дунд","Байнга асуудаг","45%","3.4","37%"],
+      ["3 — Хүчтэй","Хаана яваад ирсэн хянадаг","63%","5.1","58%"],
+      ["4 — Маш хүчтэй","Гэрээс гаргадаггүй","82%","7.8","76%"],
+    ],
+  },
+  education:{
+    sliders:[
+      {id:"eduyrs",label:"Боловсролын жил",min:0,max:16,step:1,val:8,hint:"0 = боловсролгүй  ·  8 = дунд  ·  16 = их дээд"},
+      {id:"urban",label:"Орчин",min:0,max:1,step:1,val:0,isToggle:true,opts:["Хөдөө","Хот"]},
+    ],
+    charts:[
+      ["Боловсролын жил — IPV эрсдэл (%)","Боловсрол нэмэгдэх тусам IPV эрсдэл хэрхэн буурах вэ?"],
+      ["Хот / Хөдөө харьцуулалт","Нийслэл болон хөдөөд боловсролын нөлөөлөл ялгаатай байдаг уу?"],
+    ],
+    tableHeaders:["Боловсролын түвшин","Жил","IPV эрсдэл %","Эдийн засгийн бие даасан байдал","Тайлагнах магадлал"],
+    tableData:[
+      ["Боловсролгүй","0 жил","62%","Маш бага","12%"],
+      ["Бага сургуулийн","4 жил","51%","Бага","21%"],
+      ["Дунд сургуулийн","8 жил","38%","Дунд","34%"],
+      ["Ахлах сургуулийн","12 жил","24%","Дунд-өндөр","49%"],
+      ["Техник, мэргэжлийн","14 жил","16%","Өндөр","61%"],
+      ["Дээд боловсролтой","16 жил","9%","Маш өндөр","74%"],
+    ],
+  },
+  talk:{
+    sliders:[
+      {id:"talkfreq",label:"7 хоногт ярилцдаг өдөр",min:0,max:7,step:1,val:3,hint:"0 = хэзээ ч үгүй  ·  7 = өдөр бүр"},
+      {id:"urban",label:"Орчин",min:0,max:1,step:1,val:0,isToggle:true,opts:["Хөдөө","Хот"]},
+    ],
+    charts:[
+      ["Ярилцах давтамж — IPV эрсдэл (%)","Долоо хоногт илүү олон удаа ярилцах тусам IPV эрсдэл хэрхэн буурах вэ?"],
+      ["Хот / Хөдөө харьцуулалт","Хот болон хөдөөд харилцааны нөлөөлөл ялгаатай байдаг уу?"],
+    ],
+    tableHeaders:["Ярилцах давтамж","Жишээ","IPV эрсдэл %","Харилцааны оноо","Гэр бүлийн тогтвортой байдал"],
+    tableData:[
+      ["Огт ярилцдаггүй","0 удаа/7 хоног","58%","0.5/10","Маш бага"],
+      ["Долоо хоногт 1","1 удаа/7 хоног","47%","2.1/10","Бага"],
+      ["Долоо хоногт 2","2 удаа/7 хоног","35%","4.0/10","Дунд"],
+      ["Долоо хоногт 3–4","4 удаа/7 хоног","24%","6.2/10","Дунд-өндөр"],
+      ["Долоо хоногт 5–6","5 удаа/7 хоног","14%","7.8/10","Өндөр"],
+      ["Өдөр бүр","7 удаа/7 хоног","7%","9.3/10","Маш өндөр"],
+    ],
+  },
+  unwantedsex:{
+    sliders:[
+      {id:"uwfreq",label:"Тохиолдлын давтамж",min:0,max:4,step:1,val:0,hint:"0 = хэзээ ч үгүй  ·  4 = маш олон удаа"},
+      {id:"urban",label:"Орчин",min:0,max:1,step:1,val:0,isToggle:true,opts:["Хөдөө","Хот"]},
+    ],
+    charts:[
+      ["Тохиролцоогүй харьцааны давтамж — IPV эрсдэл","Давтамж нэмэгдэх тусам IPV эрсдэл хэрхэн өсөх вэ?"],
+      ["Хот / Хөдөө харьцуулалт","Нийслэл болон хөдөөд нөлөөлөл ялгаатай байдаг уу?"],
+    ],
+    tableHeaders:["Давтамж","Тодорхойлолт","IPV эрсдэл %","Биет хүч-лтэй давхцал","Сэтгэцийн хохирол"],
+    tableData:[
+      ["0 — Байхгүй","Тохиолдоогүй","11%","—","Бага"],
+      ["1 — Нэг удаа","Нэг удаа тохиолдсон","41%","38%","Дунд"],
+      ["2 — Хааяа","Хэд хэдэн удаа","62%","57%","Өндөр"],
+      ["3 — Олон удаа","Байнгын хэв маяг","76%","71%","Маш өндөр"],
+      ["4 — Системтэй","Байнгын хяналт","89%","84%","Хямралын түвшин"],
+    ],
+  },
+};
+
+const KPI_DATA = {
+  alcohol:{
+    getKpis:(v)=>{
+      const d=+v.drinks;
+      return [
+        [8,18,28,39,54,67,79][d]+'%',
+        [0.5,1.2,2.4,3.8,5.6,7.2,9.1][d].toFixed(1)+' удаа/сар',
+        ["Өндөр","Дунд","Дунд","Бага","Маш бага","Маш бага","Аюултай"][d]
+      ];
+    },
+    kl:["IPV эрсдэл","Хэрүүл маргаан/сар","Эмэгтэйн аюулгүй байдал"],
+  },
+  jealousy:{
+    getKpis:(v)=>{
+      const j=+v.jlevel;
+      return [[9,24,45,63,82][j]+'%',[0.2,1.8,3.4,5.1,7.8][j].toFixed(1)+'/10',[5,18,37,58,76][j]+'%'];
+    },
+    kl:["IPV эрсдэл","Хяналтын оноо","Сэтгэцийн хүч-л"],
+  },
+  education:{
+    getKpis:(v)=>{
+      const idx=Math.min(5,Math.round(+v.eduyrs/16*5));
+      return [
+        [62,51,38,24,16,9][idx]+'%',
+        ["Маш бага","Бага","Дунд","Дунд-өндөр","Өндөр","Маш өндөр"][idx],
+        [12,21,34,49,61,74][idx]+'%'
+      ];
+    },
+    kl:["IPV эрсдэл","Эдийн засгийн бие даасан байдал","Тайлагнах магадлал"],
+  },
+  talk:{
+    getKpis:(v)=>{
+      const t=+v.talkfreq;
+      return [
+        [58,47,35,29,24,14,7][t]+'%',
+        [0.5,2.1,4.0,5.2,6.2,7.8,9.3][t].toFixed(1)+'/10',
+        ["Маш бага","Бага","Дунд","Дунд","Дунд-өндөр","Өндөр","Маш өндөр"][t]
+      ];
+    },
+    kl:["IPV эрсдэл","Харилцааны оноо","Гэр бүлийн тогтвортой байдал"],
+  },
+  unwantedsex:{
+    getKpis:(v)=>{
+      const u=+v.uwfreq;
+      return [
+        [11,41,62,76,89][u]+'%',
+        ["—","38%","57%","71%","84%"][u],
+        ["Бага","Дунд","Өндөр","Маш өндөр","Хямралын түвшин"][u]
+      ];
+    },
+    kl:["IPV эрсдэл","Биет хүч-лтэй давхцал","Сэтгэцийн хохирол"],
+  },
+};
+
+const CHART_DATA = {
+  alcohol:   { x:[0,1,2,3,4,5,6,7], urban:[6,14,23,33,46,60,72,77], rural:[10,22,33,45,62,74,82,86], xlabel:"Архи уух өдөр (7 хоногт)" },
+  jealousy:  { x:[0,1,2,3,4], urban:[7,20,40,58,78], rural:[11,28,50,68,86], xlabel:"Хардалтын түвшин (0–4)" },
+  education: { x:[0,4,8,12,14,16], urban:[55,44,32,19,12,7], rural:[69,58,44,30,21,12], xlabel:"Боловсролын жил" },
+  talk:      { x:[0,1,2,3,4,5,6,7], urban:[52,42,31,22,18,11,6,5], rural:[64,54,42,32,28,18,10,8], xlabel:"Ярилцах өдөр (7 хоногт)" },
+  unwantedsex:{ x:[0,1,2,3,4], urban:[9,37,57,72,85], rural:[13,45,67,80,92], xlabel:"Тохиолдлын давтамж (0–4)" },
+};
+
+let ST = { fc:'alcohol', vals:{}, ready:false, rendering:false };
+let rTimer = null;
+let pyodide;
+
+async function initPy(){
+  pyodide = await loadPyodide();
+  document.getElementById('lnote').textContent = 'matplotlib татаж байна...';
+  await pyodide.loadPackage(['numpy','matplotlib']);
+  pyodide.runPython(`
+import numpy as np, matplotlib, io, base64, json
+matplotlib.use('Agg')
+import matplotlib.pyplot as plt
+
+def setup():
+    plt.rcParams.update({
+        'figure.facecolor':'#ffffff','axes.facecolor':'#ffffff',
+        'axes.edgecolor':'#cccccc','axes.labelcolor':'#444444',
+        'xtick.color':'#888888','ytick.color':'#888888',
+        'text.color':'#111111','grid.color':'#eeeeee',
+        'grid.linewidth':0.6,'grid.linestyle':'--',
+        'font.size':9,'font.family':'sans-serif',
+        'legend.facecolor':'#ffffff','legend.edgecolor':'#dddddd',
+        'legend.labelcolor':'#444444',
+    })
+
+def b64(fig):
+    buf=io.BytesIO()
+    fig.savefig(buf,format='png',dpi=130,bbox_inches='tight',facecolor='#ffffff')
+    buf.seek(0); plt.close(fig)
+    return base64.b64encode(buf.read()).decode()
+
+def make_charts(cur_val, urban, x_data, y_urban, y_rural, xlabel):
+    setup()
+    x = np.array(x_data, dtype=float)
+    yu = np.array(y_urban, dtype=float)
+    yr = np.array(y_rural, dtype=float)
+    y_cur = yu if urban==1 else yr
+    cur_ipv = float(np.interp(cur_val, x, y_cur))
+
+    # Chart 1
+    fig1, ax1 = plt.subplots(figsize=(5.4, 3.4))
+    ax1.spines['top'].set_visible(False); ax1.spines['right'].set_visible(False)
+    ax1.spines['left'].set_color('#cccccc'); ax1.spines['bottom'].set_color('#cccccc')
+    ax1.tick_params(colors='#888888', labelsize=8)
+    ax1.grid(True, color='#eeeeee', lw=0.6, ls='--')
+    ax1.set_axisbelow(True)
+    ax1.set_xlabel(xlabel, color='#444444', fontsize=8.5)
+    ax1.set_ylabel('IPV эрсдэл (%)', color='#444444', fontsize=8.5)
+
+    ax1.scatter(x, y_cur, color='#111111', s=28, zorder=5)
+    if len(x) >= 4:
+        xf = np.linspace(x.min(), x.max(), 200)
+        deg = min(3, len(x)-1)
+        yf = np.clip(np.polyval(np.polyfit(x, y_cur, deg), xf), 0, 100)
+        ax1.plot(xf, yf, color='#111111', lw=1.8)
+        ax1.fill_between(xf, 0, yf, alpha=0.07, color='#111111')
+    else:
+        ax1.plot(x, y_cur, color='#111111', lw=1.8)
+
+    ax1.axvline(cur_val, color='#aaaaaa', lw=1, ls=':')
+    ax1.scatter([cur_val],[cur_ipv], color='#111111', s=60, zorder=6, edgecolors='white', linewidths=1.5)
+    offset = (x.max()-x.min())*0.04
+    ax1.text(cur_val+offset, cur_ipv+2, f'{cur_ipv:.0f}%', color='#111111', fontsize=8,
+             ha='left' if cur_val < x.max()*0.75 else 'right')
+    ax1.set_ylim(0,105)
+    plt.tight_layout()
+    c1 = b64(fig1)
+
+    # Chart 2
+    fig2, ax2 = plt.subplots(figsize=(5.4, 3.4))
+    ax2.spines['top'].set_visible(False); ax2.spines['right'].set_visible(False)
+    ax2.spines['left'].set_color('#cccccc'); ax2.spines['bottom'].set_color('#cccccc')
+    ax2.tick_params(colors='#888888', labelsize=8)
+    ax2.grid(True, color='#eeeeee', lw=0.6, ls='--')
+    ax2.set_axisbelow(True)
+    ax2.set_xlabel(xlabel, color='#444444', fontsize=8.5)
+    ax2.set_ylabel('IPV эрсдэл (%)', color='#444444', fontsize=8.5)
+
+    if len(x) >= 4:
+        xf = np.linspace(x.min(), x.max(), 200)
+        deg = min(3, len(x)-1)
+        ax2.plot(xf, np.clip(np.polyval(np.polyfit(x,yu,deg),xf),0,100), color='#111111', lw=1.8, label='Хот')
+        ax2.plot(xf, np.clip(np.polyval(np.polyfit(x,yr,deg),xf),0,100), color='#888888', lw=1.8, ls='--', label='Хөдөө')
+    else:
+        ax2.plot(x, yu, color='#111111', lw=1.8, label='Хот')
+        ax2.plot(x, yr, color='#888888', lw=1.8, ls='--', label='Хөдөө')
+
+    ax2.scatter(x, yu, color='#111111', s=22, zorder=5)
+    ax2.scatter(x, yr, color='#888888', s=22, zorder=5, marker='s')
+    ax2.axvline(cur_val, color='#cccccc', lw=1, ls=':')
+    ax2.set_ylim(0,105)
+    ax2.legend(fontsize=8)
+    plt.tight_layout()
+    c2 = b64(fig2)
+
+    return json.dumps({"c1":c1,"c2":c2,"cur_ipv":cur_ipv})
+
+print("ok")
+`);
+  ST.ready = true;
+  document.getElementById('loader').classList.add('gone');
+  loadFactor('alcohol');
+}
+
+function buildSliders(fc){
+  const sa = document.getElementById('sliders-area');
+  sa.innerHTML = '';
+  FACTORS[fc].sliders.forEach(sl=>{
+    if(ST.vals[sl.id] === undefined) ST.vals[sl.id] = sl.val;
+    const d = document.createElement('div');
+    d.className = 'sl-block';
+    if(sl.isToggle){
+      const cur = +ST.vals[sl.id];
+      d.innerHTML = `
+        <div class="sl-top"><span class="sl-name">${sl.label}</span></div>
+        <div class="toggle-wrap" style="margin-top:6px">
+          <button class="tog-btn${cur===0?' active':''}" data-id="${sl.id}" data-val="0">${sl.opts[0]}</button>
+          <button class="tog-btn${cur===1?' active':''}" data-id="${sl.id}" data-val="1">${sl.opts[1]}</button>
+        </div>`;
+      sa.appendChild(d);
+      d.querySelectorAll('.tog-btn').forEach(b=>{
+        b.addEventListener('click', function(){
+          d.querySelectorAll('.tog-btn').forEach(x=>x.classList.remove('active'));
+          this.classList.add('active');
+          ST.vals[sl.id] = +this.dataset.val;
+          scheduleRender();
+        });
+      });
+    } else {
+      const v = ST.vals[sl.id];
+      const pct = ((v-sl.min)/(sl.max-sl.min))*100;
+      d.innerHTML = `
+        <div class="sl-top">
+          <span class="sl-name">${sl.label}</span>
+          <span class="sl-val" id="sv-${sl.id}">${v}</span>
+        </div>
+        <div class="sl-hint">${sl.hint}</div>
+        <div class="track">
+          <div class="fill" id="sf-${sl.id}" style="width:${pct}%"></div>
+          <input type="range" min="${sl.min}" max="${sl.max}" step="${sl.step}" value="${v}" id="sl-${sl.id}"/>
+          <div class="thumb" id="sth-${sl.id}" style="left:${pct}%"></div>
+        </div>`;
+      sa.appendChild(d);
+      document.getElementById(`sl-${sl.id}`).addEventListener('input', function(){
+        const nv = +this.value;
+        ST.vals[sl.id] = nv;
+        const p = ((nv-sl.min)/(sl.max-sl.min))*100;
+        document.getElementById(`sv-${sl.id}`).textContent = nv;
+        document.getElementById(`sf-${sl.id}`).style.width = p+'%';
+        document.getElementById(`sth-${sl.id}`).style.left = p+'%';
+        scheduleRender();
+      });
+    }
+  });
+}
+
+function loadFactor(fc){
+  ST.fc = fc;
+  buildSliders(fc);
+  const def = FACTORS[fc];
+  const kd = KPI_DATA[fc];
+  document.getElementById('ct1').textContent = def.charts[0][0];
+  document.getElementById('cq1').textContent = def.charts[0][1];
+  document.getElementById('ct2').textContent = def.charts[1][0];
+  document.getElementById('cq2').textContent = def.charts[1][1];
+  document.getElementById('kl1').textContent = kd.kl[1];
+  document.getElementById('kl2').textContent = kd.kl[2];
+  renderTable(fc);
+  render();
+}
+
+function renderTable(fc){
+  const def = FACTORS[fc];
+  document.getElementById('dtitle').textContent = def.tableHeaders[0] + ' бүрийн өгөгдөл';
+  let html = '<table><thead><tr>';
+  def.tableHeaders.forEach(h=>{ html += `<th>${h}</th>`; });
+  html += '</tr></thead><tbody>';
+  def.tableData.forEach(row=>{
+    html += '<tr>';
+    row.forEach(cell=>{ html += `<td>${cell}</td>`; });
+    html += '</tr>';
+  });
+  html += '</tbody></table>';
+  document.getElementById('dtable').innerHTML = html;
+}
+
+function scheduleRender(){ clearTimeout(rTimer); rTimer = setTimeout(render, 150); }
+
+async function render(){
+  if(!ST.ready || ST.rendering) return;
+  ST.rendering = true;
+  [1,2].forEach(i=>{
+    document.getElementById(`sp${i}`).style.display = 'flex';
+    document.getElementById(`img${i}`).style.display = 'none';
+  });
+
+  const fc = ST.fc, v = ST.vals;
+  const kd = KPI_DATA[fc];
+  const kpis = kd.getKpis(v);
+  document.getElementById('kv0').textContent = kpis[0];
+  document.getElementById('kv1').textContent = kpis[1];
+  document.getElementById('kv2').textContent = kpis[2];
+
+  const cd = CHART_DATA[fc];
+  const mainSl = FACTORS[fc].sliders.find(s=>!s.isToggle);
+  const curVal = +v[mainSl.id];
+  const urban = +(v['urban']||0);
+
+  pyodide.globals.set('_x',  pyodide.toPy(cd.x));
+  pyodide.globals.set('_yu', pyodide.toPy(cd.urban));
+  pyodide.globals.set('_yr', pyodide.toPy(cd.rural));
+  pyodide.globals.set('_cur', curVal);
+  pyodide.globals.set('_urban', urban);
+  pyodide.globals.set('_xlabel', cd.xlabel);
+
+  try {
+    const res = await pyodide.runPythonAsync(
+      `make_charts(_cur, _urban, list(_x), list(_yu), list(_yr), _xlabel)`
+    );
+    const R = JSON.parse(res);
+    [1,2].forEach(i=>{
+      const img = document.getElementById(`img${i}`);
+      img.src = 'data:image/png;base64,' + R[`c${i}`];
+      img.style.display = 'block';
+      document.getElementById(`sp${i}`).style.display = 'none';
+    });
+  } catch(e) {
+    console.error(e);
+    [1,2].forEach(i=>document.getElementById(`sp${i}`).style.display='none');
+  }
+  ST.rendering = false;
+}
+
+document.querySelectorAll('.fb').forEach(b=>{
+  b.addEventListener('click', ()=>{
+    document.querySelectorAll('.fb').forEach(x=>x.classList.remove('active'));
+    b.classList.add('active');
+    ST.vals = {};
+    loadFactor(b.dataset.fc);
+  });
+});
+
+initPy();
+</script>
+</body>
+</html>
